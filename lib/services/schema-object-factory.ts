@@ -203,6 +203,9 @@ export class SchemaObjectFactory {
     if (typeDefinitionRequiredFields.length > 0) {
       typeDefinition['required'] = typeDefinitionRequiredFields;
     }
+    if (type["APIFOX_FOLDER"]) {
+      typeDefinition['x-apifox-folder'] = type["APIFOX_FOLDER"];
+    }
     schemas[type.name] = typeDefinition;
     return type.name;
   }
