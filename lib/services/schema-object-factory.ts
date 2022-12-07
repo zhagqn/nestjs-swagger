@@ -38,7 +38,7 @@ export class SchemaObjectFactory {
   constructor(
     private readonly modelPropertiesAccessor: ModelPropertiesAccessor,
     private readonly swaggerTypesMapper: SwaggerTypesMapper
-  ) {}
+  ) { }
 
   createFromModel(
     parameters: ParamWithTypeMetadata[],
@@ -162,6 +162,7 @@ export class SchemaObjectFactory {
       const schemaCombinators = ['oneOf', 'anyOf', 'allOf'];
       if (schemaCombinators.some((key) => key in property)) {
         delete (property as SchemaObjectMetadata).type;
+        if (property['$ref']) delete property["$ref"]
       }
       return property as ParameterObject;
     });
@@ -202,6 +203,9 @@ export class SchemaObjectFactory {
 
     if (typeDefinitionRequiredFields.length > 0) {
       typeDefinition['required'] = typeDefinitionRequiredFields;
+    }
+    if (type["APIFOX_FOLDER"]) {
+      typeDefinition['x-apifox-folder'] = type["APIFOX_FOLDER"];
     }
     schemas[type.name] = typeDefinition;
     return type.name;
@@ -250,8 +254,8 @@ export class SchemaObjectFactory {
       const _enum = param.enum
         ? param.enum
         : param.schema['items']
-        ? param.schema['items']['enum']
-        : param.schema['enum'];
+          ? param.schema['items']['enum']
+          : param.schema['enum'];
 
       schemas[enumName] = {
         type: 'string',
@@ -345,7 +349,7 @@ export class SchemaObjectFactory {
         name: metadata.name || key,
         required: metadata.required,
         ...validMetadataObject,
-        allOf: [{ $ref }]
+        $ref,
       } as SchemaObjectMetadata;
     }
     return {

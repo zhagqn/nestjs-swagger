@@ -25,6 +25,7 @@ export function ApiHeader(
       in: 'header',
       description: options.description,
       required: options.required,
+      example: options.example,
       schema: {
         ...(options.schema || {}),
         type: 'string'

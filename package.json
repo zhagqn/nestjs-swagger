@@ -1,10 +1,10 @@
 {
-  "name": "@nestjs/swagger",
-  "version": "6.1.3",
+  "name": "@hexys/nestjs-swagger",
+  "version": "6.1.3-apifox2",
   "description": "Nest - modern, fast, powerful node.js web framework (@swagger)",
-  "author": "Kamil Mysliwiec",
+  "author": "zhagqn",
   "license": "MIT",
-  "repository": "https://github.com/nestjs/swagger",
+  "repository": "https://github.com/zhagqn/nestjs-swagger",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "format": "prettier \"lib/**/*.ts\" --write",
