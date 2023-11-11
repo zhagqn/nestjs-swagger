@@ -46,6 +46,10 @@ export function isStringLiteral(type: Type) {
   return hasFlag(type, TypeFlags.StringLiteral) && !type.isUnion();
 }
 
+export function isStringMapping(type: Type) {
+  return hasFlag(type, TypeFlags.StringMapping);
+}
+
 export function isNumber(type: Type) {
   return hasFlag(type, TypeFlags.Number);
 }
@@ -113,12 +117,10 @@ export function getDefaultTypeFormatFlags(enclosingNode: Node) {
   return formatFlags;
 }
 
-export function getMainCommentAndExamplesOfNode(
+export function getMainCommentOfNode(
   node: Node,
-  sourceFile: SourceFile,
-  typeChecker: TypeChecker,
-  includeExamples?: boolean
-): [string, string[]] {
+  sourceFile: SourceFile
+): string {
   const sourceText = sourceFile.getFullText();
   // in case we decide to include "// comments"
   const replaceRegex =
@@ -126,37 +128,97 @@ export function getMainCommentAndExamplesOfNode(
   //const replaceRegex = /^ *\** *@.*$|^ *\/\*+ *|^ *\/+ *|^ *\*+ *| +$| *\**\/ *$/gim;
 
   const commentResult = [];
-  const examplesResult = [];
-  const introspectCommentsAndExamples = (comments?: CommentRange[]) =>
+  const introspectComments = (comments?: CommentRange[]) =>
     comments?.forEach((comment) => {
       const commentSource = sourceText.substring(comment.pos, comment.end);
       const oneComment = commentSource.replace(replaceRegex, '').trim();
       if (oneComment) {
         commentResult.push(oneComment);
       }
-      if (includeExamples) {
-        const regexOfExample =
-          /@example *((['"](?<exampleAsString>.+?)['"])|(?<exampleAsBooleanOrNumber>[^ ]+?)|(?<exampleAsArray>(\[.+?\]))) *$/gim;
+    });
+
+  const leadingCommentRanges = getLeadingCommentRanges(
+    sourceText,
+    node.getFullStart()
+  );
+  introspectComments(leadingCommentRanges);
+  if (!commentResult.length) {
+    const trailingCommentRanges = getTrailingCommentRanges(
+      sourceText,
+      node.getFullStart()
+    );
+    introspectComments(trailingCommentRanges);
+  }
+  return commentResult.join('\n');
+}
+
+export function getTsDocTagsOfNode(
+  node: Node,
+  sourceFile: SourceFile,
+  typeChecker: TypeChecker
+) {
+  const sourceText = sourceFile.getFullText();
+
+  const tagDefinitions: {
+    [key: string]: {
+      regex: RegExp;
+      hasProperties: boolean;
+      repeatable: boolean;
+    };
+  } = {
+    example: {
+      regex:
+        /@example *((['"](?<string>.+?)['"])|(?<booleanOrNumber>[^ ]+?)|(?<array>(\[.+?\]))) *$/gim,
+      hasProperties: true,
+      repeatable: true
+    },
+    deprecated: {
+      regex: /@deprecated */gim,
+      hasProperties: false,
+      repeatable: false
+    }
+  };
+
+  const tagResults: any = {};
+  const introspectTsDocTags = (comments?: CommentRange[]) =>
+    comments?.forEach((comment) => {
+      const commentSource = sourceText.substring(comment.pos, comment.end);
+
+      for (const tag in tagDefinitions) {
+        const { regex, hasProperties, repeatable } = tagDefinitions[tag];
+
+        let value: any;
+
         let execResult: RegExpExecArray;
         while (
-          (execResult = regexOfExample.exec(commentSource)) &&
-          execResult.length > 1
+          (execResult = regex.exec(commentSource)) &&
+          (!hasProperties || execResult.length > 1)
         ) {
-          const example =
-            execResult.groups?.exampleAsString ??
-            execResult.groups?.exampleAsBooleanOrNumber ??
-            (execResult.groups?.exampleAsArray &&
-              execResult.groups.exampleAsArray.replace(/'/g, '"'));
+          if (repeatable && !tagResults[tag]) tagResults[tag] = [];
 
-          const type = typeChecker.getTypeAtLocation(node);
-          if (type && isString(type)) {
-            examplesResult.push(example);
-          } else {
-            try {
-              examplesResult.push(JSON.parse(example));
-            } catch {
-              examplesResult.push(example);
+          if (hasProperties) {
+            const docValue =
+              execResult.groups?.string ??
+              execResult.groups?.booleanOrNumber ??
+              (execResult.groups?.array &&
+                execResult.groups.array.replace(/'/g, '"'));
+
+            const type = typeChecker.getTypeAtLocation(node);
+
+            value = docValue;
+            if (!type || !isString(type)) {
+              try {
+                value = JSON.parse(value);
+              } catch {}
             }
+          } else {
+            value = true;
+          }
+
+          if (repeatable) {
+            tagResults[tag].push(value);
+          } else {
+            tagResults[tag] = value;
           }
         }
       }
@@ -166,15 +228,8 @@ export function getMainCommentAndExamplesOfNode(
     sourceText,
     node.getFullStart()
   );
-  introspectCommentsAndExamples(leadingCommentRanges);
-  if (!commentResult.length) {
-    const trailingCommentRanges = getTrailingCommentRanges(
-      sourceText,
-      node.getFullStart()
-    );
-    introspectCommentsAndExamples(trailingCommentRanges);
-  }
-  return [commentResult.join('\n'), examplesResult];
+  introspectTsDocTags(leadingCommentRanges);
+  return tagResults;
 }
 
 export function getDecoratorArguments(decorator: Decorator) {
@@ -230,15 +285,35 @@ export function createBooleanLiteral(
   return flag ? factory.createTrue() : factory.createFalse();
 }
 
-export function createPrimitiveLiteral(factory: ts.NodeFactory, item: unknown) {
-  const typeOfItem = typeof item;
-
+export function createPrimitiveLiteral(
+  factory: ts.NodeFactory,
+  item: unknown,
+  typeOfItem = typeof item
+) {
   switch (typeOfItem) {
     case 'boolean':
       return createBooleanLiteral(factory, item as boolean);
-    case 'number':
+    case 'number': {
+      if ((item as number) < 0) {
+        return factory.createPrefixUnaryExpression(
+          SyntaxKind.MinusToken,
+          factory.createNumericLiteral(Math.abs(item as number))
+        );
+      }
       return factory.createNumericLiteral(item as number);
+    }
     case 'string':
       return factory.createStringLiteral(item as string);
   }
+}
+
+export function createLiteralFromAnyValue(
+  factory: ts.NodeFactory,
+  item: unknown
+) {
+  return Array.isArray(item)
+    ? factory.createArrayLiteralExpression(
+        item.map((item) => createLiteralFromAnyValue(factory, item))
+      )
+    : createPrimitiveLiteral(factory, item);
 }

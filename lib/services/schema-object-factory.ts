@@ -104,6 +104,13 @@ export class SchemaObjectFactory {
         type: 'string'
       };
     }
+    if (this.isBigInt(param.type as Function)) {
+      return {
+        format: 'int64',
+        ...param,
+        type: 'integer'
+      };
+    }
     if (isFunction(param.type)) {
       const propertiesWithType = this.extractPropertiesFromType(
         param.type,
@@ -160,9 +167,16 @@ export class SchemaObjectFactory {
       );
 
       const schemaCombinators = ['oneOf', 'anyOf', 'allOf'];
-      if (schemaCombinators.some((key) => key in property)) {
-        delete (property as SchemaObjectMetadata).type;
-        if (property['$ref']) delete property["$ref"]
+      let keyOfCombinators = '';
+      if (schemaCombinators.some((_key) => { keyOfCombinators = _key; return _key in property; })) {
+        if (((property as SchemaObjectMetadata)?.type === 'array' || (property as SchemaObjectMetadata).isArray) && keyOfCombinators) {
+          (property as SchemaObjectMetadata).items = {};
+          (property as SchemaObjectMetadata).items[keyOfCombinators] = property[keyOfCombinators];
+          delete property[keyOfCombinators];
+        } else {
+          delete (property as SchemaObjectMetadata).type;
+          if (property['$ref']) delete property["$ref"]
+        }
       }
       return property as ParameterObject;
     });
@@ -253,12 +267,16 @@ export class SchemaObjectFactory {
     if (!(enumName in schemas)) {
       const _enum = param.enum
         ? param.enum
-        : param.schema['items']
-          ? param.schema['items']['enum']
-          : param.schema['enum'];
+        : param.schema
+          ? param.schema['items']
+            ? param.schema['items']['enum']
+            : param.schema['enum']
+          : param.isArray && param.items
+            ? param.items.enum
+            : undefined;
 
       schemas[enumName] = {
-        type: 'string',
+        type: param.schema?.['type'] ?? 'string',
         enum: _enum
       };
     }
@@ -286,8 +304,14 @@ export class SchemaObjectFactory {
     const $ref = getSchemaPath(enumName);
 
     if (!(enumName in schemas)) {
+      const enumType: string = (
+        metadata.isArray
+          ? metadata.items['type']
+          : metadata.type
+      ) ?? 'string';
+
       schemas[enumName] = {
-        type: 'string',
+        type: enumType,
         enum:
           metadata.isArray && metadata.items
             ? metadata.items['enum']
@@ -469,20 +493,20 @@ export class SchemaObjectFactory {
     pendingSchemaRefs: string[],
     nestedArrayType?: unknown
   ) {
-    const trueType = nestedArrayType || metadata.type;
-    if (this.isObjectLiteral(trueType as Record<string, any>)) {
+    const typeRef = nestedArrayType || metadata.type;
+    if (this.isObjectLiteral(typeRef as Record<string, any>)) {
       return this.createFromObjectLiteral(
         key,
-        trueType as Record<string, any>,
+        typeRef as Record<string, any>,
         schemas
       );
     }
-    if (isString(trueType)) {
+    if (isString(typeRef)) {
       if (isEnumMetadata(metadata)) {
         return this.createEnumSchemaType(key, metadata, schemas);
       }
       if (metadata.isArray) {
-        return this.transformToArraySchemaProperty(metadata, key, trueType);
+        return this.transformToArraySchemaProperty(metadata, key, typeRef);
       }
 
       return {
@@ -490,7 +514,7 @@ export class SchemaObjectFactory {
         name: metadata.name || key
       };
     }
-    if (isDateCtor(trueType as Function)) {
+    if (isDateCtor(typeRef as Function)) {
       if (metadata.isArray) {
         return this.transformToArraySchemaProperty(metadata, key, {
           format: metadata.format || 'date-time',
@@ -504,7 +528,7 @@ export class SchemaObjectFactory {
         name: metadata.name || key
       };
     }
-    if (this.isBigInt(trueType as Function)) {
+    if (this.isBigInt(typeRef as Function)) {
       return {
         format: 'int64',
         ...metadata,
@@ -512,16 +536,16 @@ export class SchemaObjectFactory {
         name: metadata.name || key
       };
     }
-    if (!isBuiltInType(trueType as Function)) {
+    if (!isBuiltInType(typeRef as Function)) {
       return this.createNotBuiltInTypeReference(
         key,
         metadata,
-        trueType,
+        typeRef,
         schemas,
         pendingSchemaRefs
       );
     }
-    const typeName = this.getTypeName(trueType as Type<unknown>);
+    const typeName = this.getTypeName(typeRef as Type<unknown>);
     const itemType = this.swaggerTypesMapper.mapTypeToOpenAPIType(typeName);
     if (metadata.isArray) {
       return this.transformToArraySchemaProperty(metadata, key, {

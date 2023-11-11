@@ -1,15 +1,23 @@
+import { SwaggerUiOptions } from './swagger-ui-options.interface';
+import { SwaggerDocumentOptions } from './swagger-document-options.interface';
+import { OpenAPIObject } from './open-api-spec.interface';
+
 export interface SwaggerCustomOptions {
   useGlobalPrefix?: boolean;
   explorer?: boolean;
-  swaggerOptions?: Record<string, any>;
+  swaggerOptions?: SwaggerUiOptions;
   customCss?: string;
-  customCssUrl?: string;
-  customJs?: string;
+  customCssUrl?: string | string[];
+  customJs?: string | string[];
+  customJsStr?: string | string[];
   customfavIcon?: string;
+  customSwaggerUiPath?: string;
   swaggerUrl?: string;
   customSiteTitle?: string;
   validatorUrl?: string;
   url?: string;
   urls?: Record<'url' | 'name', string>[];
-  initOAuth?: Record<string, any>; // https://swagger.io/docs/open-source-tools/swagger-ui/usage/oauth2/
+  jsonDocumentUrl?: string;
+  yamlDocumentUrl?: string;
+  patchDocumentOnRequest?: <TRequest = any, TResponse = any> (req: TRequest, res: TResponse, document: OpenAPIObject) => OpenAPIObject;
 }
