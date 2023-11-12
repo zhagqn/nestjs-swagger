@@ -153,14 +153,23 @@ export function SwaggerModule() {
   return () => {};
 }
 export function IntersectionType() {
-  return () => {};
+  return class {};
 }
 export function OmitType() {
-  return () => {};
+  return class {};
 }
 export function PartialType() {
-  return () => {};
+  return class {};
 }
 export function PickType() {
-  return () => {};
+  return class {};
+}
+export function getSchemaPath() {
+  return () => '';
+}
+export function before() {
+  return () => '';
+}
+export function ReadonlyVisitor() {
+  return class {};
 }
